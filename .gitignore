@@ -46,3 +46,6 @@ out/
 /measurements*.txt
 /*.out
 out_expected.txt
+
+# jbang files
+profile.html
