@@ -29,24 +29,7 @@ public class CalculateAverage_eruizc {
         final var threads = new Thread[workers];
 
         for (var i = 0; i < workers; i++) {
-            threads[i] = Thread.ofPlatform().start(new Runnable() {
-                private Job job;
-
-                public Runnable init(Job job) {
-                    this.job = job;
-                    return this;
-                }
-
-                @Override
-                public void run() {
-                    try {
-                        job.start();
-                    }
-                    catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }.init(jobs[i]));
+            threads[i] = Thread.ofPlatform().start(jobs[i]);
         }
 
         for (var thread : threads) {
@@ -67,7 +50,7 @@ public class CalculateAverage_eruizc {
         return jobs;
     }
 
-    public static class Job {
+    public static class Job implements Runnable {
         private final ConcurrentMap<String, Measurement> map;
         private final BufferedReader reader;
         private long bytesToRead;
@@ -84,17 +67,21 @@ public class CalculateAverage_eruizc {
             }
         }
 
-        public void start() throws IOException {
-            String line;
-            while (bytesToRead > 0 && (line = reader.readLine()) != null) {
-                var split = line.split(";"); // Improve with binary search
-                var station = map.putIfAbsent(split[0], new Measurement(split[1]));
-                if (station != null) {
-                    station.add(split[1]);
+        public void run() {
+            try {
+                String line;
+                while (bytesToRead > 0 && (line = reader.readLine()) != null) {
+                    var split = line.split(";"); // Improve with binary search
+                    var station = map.putIfAbsent(split[0], new Measurement(split[1]));
+                    if (station != null) {
+                        station.add(split[1]);
+                    }
+                    bytesToRead -= line.getBytes().length;
                 }
-                bytesToRead -= line.getBytes().length;
+                reader.close();
+            } catch (IOException exception) {
+                exception.printStackTrace();
             }
-            reader.close();
         }
     }
 
