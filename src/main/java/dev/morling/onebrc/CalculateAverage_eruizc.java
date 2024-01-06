@@ -16,72 +16,56 @@
 package dev.morling.onebrc;
 
 import java.io.*;
-import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 public class CalculateAverage_eruizc {
-    private static final String FILE = "./measurements.txt";
+    private static final String MEASUREMENTS = "./measurements.txt";
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
-        var fr = new FileReader(FILE);
-        var br = new BufferedReader(fr);
-        var lines = br.lines();
-        var map = new TreeMap<String, Something>();
-
-        lines.forEach(line -> {
-            var split = line.split(";");
-            var city = split[0];
-            var temp = Double.parseDouble(split[1]);
-
-            if (map.containsKey(city)) {
-                var something = map.get(city);
-                something.add(temp);
+        var workers = Runtime.getRuntime().availableProcessors();
+        var file = new File(MEASUREMENTS);
+        var segments = getSegments(file, workers);
+        var pool = new Thread[workers];
+        for (var w = 0; w < workers; w++) {
+            if (segments[w] == null) {
+                continue;
             }
-            else {
-                map.put(city, new Something(temp));
-            }
-        });
+            pool[w] = Thread.ofPlatform().start(new Runnable() {
+                private Segment segment;
 
-        br.close();
-        System.out.println(map);
+                public Runnable init(Segment segment) {
+                    this.segment = segment;
+                    return this;
+                }
+
+                @Override
+                public void run() {
+                    System.out.println(segment);
+                }
+            }.init(segments[w]));
+        }
     }
 
-    public static class Something {
-        private double min;
-        private double max;
-        private final List<Double> temps = new ArrayList<>(); // I don't like the double -> Double conversion
+    private static Segment[] getSegments(File f, int count) throws FileNotFoundException, IOException {
+        try (var file = new RandomAccessFile(f, "r")) {
+            var size = file.length() / count;
+            var segments = new Segment[count--];
+            var start = 0l;
+            var end = size;
 
-        public Something(double temp) {
-            min = temp;
-            max = temp;
-            temps.add(temp);
-        }
-
-        @Override
-        public String toString() {
-            return min + "/" + mean() + "/" + max; // What's faster, concatenation or string.format?
-        }
-
-        public double mean() {
-            var mean = 0d;
-            for (var t : temps) {
-                mean += t;
+            while (start < file.length()) {
+                file.seek(end);
+                while (file.read() != '\n' && end < file.length()) {
+                    end++;
+                }
+                segments[count--] = new Segment(start, end);
+                start = end + 1;
+                end = Math.min(file.length(), end + size);
             }
-            return round(mean / temps.size());
+            return segments;
         }
+    }
 
-        public void add(double temp) {
-            if (temp > max) {
-                max = temp;
-            }
-            else if (temp < min) {
-                min = temp;
-            }
-            temps.add(temp);
-        }
-
-        private static double round(double d) {
-            return Math.round(d * 10d) / 10d;
-        }
+    private record Segment(long start, long end) {
     }
 }
