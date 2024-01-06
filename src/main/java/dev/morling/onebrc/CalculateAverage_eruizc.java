@@ -16,8 +16,9 @@
 package dev.morling.onebrc;
 
 import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
 
 public class CalculateAverage_eruizc {
     private static final String MEASUREMENTS = "./measurements.txt";
@@ -56,7 +57,7 @@ public class CalculateAverage_eruizc {
             // Move pointer to start and discard first line as it would be processed by another worker
             if (start != 0) {
                 file.seek(start);
-                file.readLine();
+                file.readLine(); // This could be optimized, as it does bunch of stuff
             }
         }
 
@@ -68,25 +69,12 @@ public class CalculateAverage_eruizc {
             while (file.getFilePointer() <= end) {
                 var line = file.readLine();
                 var split = line.split(";"); // Improve with binary search
-                var station = map.get(split[0]);
-                if (station == null) {
-                    map.put(split[0], new Measurement(split[1]));
-                }
-                else {
+                var station = map.putIfAbsent(split[0], new Measurement(split[1]));
+                if (station != null) {
                     station.add(split[1]);
                 }
             }
             file.close();
-        }
-
-        @Override
-        public String toString() {
-            try {
-                return "[ start: " + file.getFilePointer() + ", end: " + end + ", will_run: " + (file.getFilePointer() < end) + " ]";
-            }
-            catch (IOException e) {
-                throw new RuntimeException(e);
-            }
         }
     }
 
