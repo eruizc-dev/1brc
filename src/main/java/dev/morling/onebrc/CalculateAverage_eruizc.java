@@ -16,24 +16,44 @@
 package dev.morling.onebrc;
 
 import java.io.*;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 
 public class CalculateAverage_eruizc {
     private static final String MEASUREMENTS = "./measurements.txt";
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         final var workers = Runtime.getRuntime().availableProcessors();
-        final var map = new TreeMap<String, Measurement>();
+        final var map = new ConcurrentSkipListMap<String, Measurement>();
         final var jobs = jobs(map, new File(MEASUREMENTS), workers);
-        for (var job : jobs) {
-            job.start();
+        final var threads = new Thread[workers];
+        for (var i = 0; i < workers; i++) {
+            threads[i] = Thread.ofPlatform().start(new Runnable() {
+                private Job job;
+
+                public Runnable init(Job job) {
+                    this.job = job;
+                    return this;
+                }
+
+                @Override
+                public void run() {
+                    try {
+                        job.start();
+                    }
+                    catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }.init(jobs[i]));
+        }
+
+        for (var thread : threads) {
+            thread.join();
         }
         System.out.println(map);
     }
 
-    private static Job[] jobs(Map<String, Measurement> map, File file, int count) throws FileNotFoundException, IOException {
+    private static Job[] jobs(ConcurrentMap<String, Measurement> map, File file, int count) throws FileNotFoundException, IOException {
         final var jobs = new Job[count];
         final var size = file.length() / count;
         var start = 0l;
@@ -45,11 +65,11 @@ public class CalculateAverage_eruizc {
     }
 
     public static class Job {
-        private final Map<String, Measurement> map;
+        private final ConcurrentMap<String, Measurement> map;
         private final RandomAccessFile file;
         private final long end;
 
-        public Job(Map<String, Measurement> map, File f, long start, long end) throws FileNotFoundException, IOException {
+        public Job(ConcurrentMap<String, Measurement> map, File f, long start, long end) throws FileNotFoundException, IOException {
             this.map = map;
             this.file = new RandomAccessFile(f, "r");
             this.end = end;
