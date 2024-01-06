@@ -24,12 +24,12 @@ public class CalculateAverage_eruizc {
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         final var workers = Runtime.getRuntime().availableProcessors();
-        final var map = new ConcurrentHashMap<String, Measurement>(10_000, 1f, workers);
+        final var map = new TreeMap<String, Measurement>();
         final var jobs = jobs(map, new File(MEASUREMENTS), workers);
         for (var job : jobs) {
-            System.out.println(job);
-            job.close();
+            job.start();
         }
+        System.out.println(map);
     }
 
     private static Job[] jobs(Map<String, Measurement> map, File file, int count) throws FileNotFoundException, IOException {
