@@ -94,7 +94,7 @@ public class CalculateAverage_eruizc {
         private double max;
         private double min;
         private double sum = 0;
-        private long measurements = 0;
+        private long count = 1;
 
         public Measurement(String temperature) {
             var temp = Double.parseDouble(temperature);
@@ -106,7 +106,7 @@ public class CalculateAverage_eruizc {
         public void add(String temperature) {
             var temp = Double.parseDouble(temperature);
             sum += temp;
-            measurements++;
+            count++;
 
             if (temp > max) {
                 max = temp;
@@ -117,7 +117,7 @@ public class CalculateAverage_eruizc {
         }
 
         public double mean() {
-            return Math.round((measurements / sum) * 10d) / 10d;
+            return Math.round((sum / count) * 10d) / 10d;
         }
 
         @Override
