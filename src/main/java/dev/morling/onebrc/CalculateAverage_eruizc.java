@@ -20,12 +20,14 @@ import java.util.concurrent.*;
 
 public class CalculateAverage_eruizc {
     private static final String MEASUREMENTS = "./measurements.txt";
+    private static final int BUFFER_SIZE = 8 * 1024; // Could play with this a little
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         final var workers = Runtime.getRuntime().availableProcessors();
         final var map = new ConcurrentSkipListMap<String, Measurement>();
         final var jobs = jobs(map, new File(MEASUREMENTS), workers);
         final var threads = new Thread[workers];
+
         for (var i = 0; i < workers; i++) {
             threads[i] = Thread.ofPlatform().start(new Runnable() {
                 private Job job;
@@ -50,6 +52,7 @@ public class CalculateAverage_eruizc {
         for (var thread : threads) {
             thread.join();
         }
+
         System.out.println(map);
     }
 
@@ -66,35 +69,32 @@ public class CalculateAverage_eruizc {
 
     public static class Job {
         private final ConcurrentMap<String, Measurement> map;
-        private final RandomAccessFile file;
-        private final long end;
+        private final BufferedReader reader;
+        private long bytesToRead;
 
         public Job(ConcurrentMap<String, Measurement> map, File f, long start, long end) throws FileNotFoundException, IOException {
             this.map = map;
-            this.file = new RandomAccessFile(f, "r");
-            this.end = end;
+            this.reader = new BufferedReader(new FileReader(f), BUFFER_SIZE);
+            this.bytesToRead = end - start;
 
             // Move pointer to start and discard first line as it would be processed by another worker
             if (start != 0) {
-                file.seek(start);
-                file.readLine(); // This could be optimized, as it does bunch of stuff
+                reader.skip(start);
+                this.bytesToRead -= reader.readLine().getBytes().length; // Readline could be null in small files
             }
         }
 
-        public void close() throws IOException {
-            file.close();
-        }
-
         public void start() throws IOException {
-            while (file.getFilePointer() <= end) {
-                var line = file.readLine();
+            String line;
+            while (bytesToRead > 0 && (line = reader.readLine()) != null) {
                 var split = line.split(";"); // Improve with binary search
                 var station = map.putIfAbsent(split[0], new Measurement(split[1]));
                 if (station != null) {
                     station.add(split[1]);
                 }
+                bytesToRead -= line.getBytes().length;
             }
-            file.close();
+            reader.close();
         }
     }
 
