@@ -20,15 +20,17 @@ import java.util.concurrent.*;
 
 public class CalculateAverage_eruizc {
     private static final String MEASUREMENTS = "./measurements.txt";
-    private static final int BUFFER_SIZE = 8 * 1024; // Could play with this a little
+
+    // Optimizations
+    private static final int WORKERS = Runtime.getRuntime().availableProcessors();
+    private static final int BUFFER_SIZE = 8 * 1024;
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
-        final var workers = Runtime.getRuntime().availableProcessors();
-        final var map = new ConcurrentSkipListMap<String, Measurement>();
-        final var jobs = jobs(map, new File(MEASUREMENTS), workers);
-        final var threads = new Thread[workers];
+        var measurements = new ConcurrentSkipListMap<String, Station>();
+        var jobs = jobs(measurements, MEASUREMENTS, WORKERS);
+        var threads = new Thread[WORKERS];
 
-        for (var i = 0; i < workers; i++) {
+        for (var i = 0; i < WORKERS; i++) {
             threads[i] = Thread.ofPlatform().start(jobs[i]);
         }
 
@@ -36,34 +38,37 @@ public class CalculateAverage_eruizc {
             thread.join();
         }
 
-        System.out.println(map);
+        System.out.println(measurements);
     }
 
-    private static Job[] jobs(ConcurrentMap<String, Measurement> map, File file, int count) throws FileNotFoundException, IOException {
-        final var jobs = new Job[count];
-        final var size = file.length() / count;
+    private static Job[] jobs(ConcurrentMap<String, Station> map, String filename, int count) throws FileNotFoundException, IOException {
+        var jobs = new Job[count];
+        var size = filename.length() / count;
         var start = 0l;
         while (--count >= 0) {
-            jobs[count] = new Job(map, file, start, start + size);
+            jobs[count] = new Job(map, filename, start, size);
             start += size;
         }
         return jobs;
     }
 
     public static class Job implements Runnable {
-        private final ConcurrentMap<String, Measurement> map;
+        private final ConcurrentMap<String, Station> map;
         private final BufferedReader reader;
         private long bytesToRead;
 
-        public Job(ConcurrentMap<String, Measurement> map, File f, long start, long end) throws FileNotFoundException, IOException {
+        public Job(ConcurrentMap<String, Station> map, String filename, long start, long size) throws FileNotFoundException, IOException {
             this.map = map;
-            this.reader = new BufferedReader(new FileReader(f), BUFFER_SIZE);
-            this.bytesToRead = end - start;
+            this.reader = new BufferedReader(new FileReader(filename), BUFFER_SIZE);
+            this.bytesToRead = size;
 
             // Move pointer to start and discard first line as it would be processed by another worker
             if (start != 0) {
                 reader.skip(start);
-                this.bytesToRead -= reader.readLine().getBytes().length; // Readline could be null in small files
+                var line = reader.readLine();
+                if (line != null) {
+                    this.bytesToRead -= line.getBytes().length;
+                }
             }
         }
 
@@ -72,36 +77,38 @@ public class CalculateAverage_eruizc {
                 String line;
                 while (bytesToRead > 0 && (line = reader.readLine()) != null) {
                     var split = line.split(";"); // Improve with binary search
-                    var station = map.putIfAbsent(split[0], new Measurement(split[1]));
+                    var station = map.putIfAbsent(split[0], new Station(split[1]));
                     if (station != null) {
                         station.add(split[1]);
                     }
                     bytesToRead -= line.getBytes().length;
                 }
                 reader.close();
-            } catch (IOException exception) {
+            }
+            catch (IOException exception) {
                 exception.printStackTrace();
             }
         }
     }
 
-    public static class Measurement {
+    public static class Station {
         private double max;
         private double min;
-        private double sum = 0;
-        private long count = 1;
+        private double sum;
+        private long measurements;
 
-        public Measurement(String temperature) {
+        public Station(String temperature) {
             var temp = Double.parseDouble(temperature);
             this.max = temp;
             this.min = temp;
-            this.sum += temp;
+            this.sum = temp;
+            this.measurements = 1;
         }
 
         public void add(String temperature) {
             var temp = Double.parseDouble(temperature);
-            sum += temp;
-            count++;
+            this.sum += temp;
+            this.measurements++;
 
             if (temp > max) {
                 max = temp;
@@ -112,7 +119,7 @@ public class CalculateAverage_eruizc {
         }
 
         public double mean() {
-            return Math.round((sum / count) * 10d) / 10d;
+            return Math.round((sum / measurements) * 10d) / 10d;
         }
 
         @Override
