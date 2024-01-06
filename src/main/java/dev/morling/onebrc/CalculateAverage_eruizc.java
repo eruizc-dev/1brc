@@ -59,28 +59,15 @@ public class CalculateAverage_eruizc {
 
         @Override
         public String toString() {
-            return min() + "/" + mean() + "/" + max(); // What's faster, concatenation or string.format?
+            return min + "/" + mean() + "/" + max; // What's faster, concatenation or string.format?
         }
-
-        public double min() { // Does this method add any overhead?
-            return min;
-        }
-
-        public double max() { // Does this method add any overhead?
-            return max;
-        }
-
-        private boolean calculatedMean = false;
-        private double mean = 0;
 
         public double mean() {
-            if (!calculatedMean) {
-                var count = temps.size();
-                mean = count % 2 == 0
-                        ? (temps.get(count / 2 - 1) + temps.get(count / 2)) / 2
-                        : temps.get(count / 2);
+            var mean = 0d;
+            for (var t : temps) {
+                mean += t;
             }
-            return mean;
+            return round(mean / temps.size());
         }
 
         public void add(double temp) {
@@ -91,6 +78,10 @@ public class CalculateAverage_eruizc {
                 min = temp;
             }
             temps.add(temp);
+        }
+
+        private static double round(double d) {
+            return Math.round(d * 10d) / 10d;
         }
     }
 }
