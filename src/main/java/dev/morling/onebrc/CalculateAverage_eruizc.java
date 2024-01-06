@@ -16,56 +16,113 @@
 package dev.morling.onebrc;
 
 import java.io.*;
-import java.util.concurrent.ExecutionException;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class CalculateAverage_eruizc {
     private static final String MEASUREMENTS = "./measurements.txt";
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
-        var workers = Runtime.getRuntime().availableProcessors();
-        var file = new File(MEASUREMENTS);
-        var segments = getSegments(file, workers);
-        var pool = new Thread[workers];
-        for (var w = 0; w < workers; w++) {
-            if (segments[w] == null) {
-                continue;
-            }
-            pool[w] = Thread.ofPlatform().start(new Runnable() {
-                private Segment segment;
-
-                public Runnable init(Segment segment) {
-                    this.segment = segment;
-                    return this;
-                }
-
-                @Override
-                public void run() {
-                    System.out.println(segment);
-                }
-            }.init(segments[w]));
+        final var workers = Runtime.getRuntime().availableProcessors();
+        final var map = new ConcurrentHashMap<String, Measurement>(10_000, 1f, workers);
+        final var jobs = jobs(map, new File(MEASUREMENTS), workers);
+        for (var job : jobs) {
+            System.out.println(job);
+            job.close();
         }
     }
 
-    private static Segment[] getSegments(File f, int count) throws FileNotFoundException, IOException {
-        try (var file = new RandomAccessFile(f, "r")) {
-            var size = file.length() / count;
-            var segments = new Segment[count--];
-            var start = 0l;
-            var end = size;
+    private static Job[] jobs(Map<String, Measurement> map, File file, int count) throws FileNotFoundException, IOException {
+        final var jobs = new Job[count];
+        final var size = file.length() / count;
+        var start = 0l;
+        while (--count >= 0) {
+            jobs[count] = new Job(map, file, start, start + size);
+            start += size;
+        }
+        return jobs;
+    }
 
-            while (start < file.length()) {
-                file.seek(end);
-                while (file.read() != '\n' && end < file.length()) {
-                    end++;
-                }
-                segments[count--] = new Segment(start, end);
-                start = end + 1;
-                end = Math.min(file.length(), end + size);
+    public static class Job {
+        private final Map<String, Measurement> map;
+        private final RandomAccessFile file;
+        private final long end;
+
+        public Job(Map<String, Measurement> map, File f, long start, long end) throws FileNotFoundException, IOException {
+            this.map = map;
+            this.file = new RandomAccessFile(f, "r");
+            this.end = end;
+
+            // Move pointer to start and discard first line as it would be processed by another worker
+            if (start != 0) {
+                file.seek(start);
+                file.readLine();
             }
-            return segments;
+        }
+
+        public void close() throws IOException {
+            file.close();
+        }
+
+        public void start() throws IOException {
+            while (file.getFilePointer() < end) {
+                var line = file.readLine();
+                var split = line.split(";"); // Improve with binary search
+                var station = map.get(split[0]);
+                if (station == null) {
+                    map.put(split[0], new Measurement(split[1]));
+                }
+                else {
+                    station.add(split[1]);
+                }
+            }
+            file.close();
+        }
+
+        @Override
+        public String toString() {
+            try {
+                return "[ start: " + file.getFilePointer() + ", end: " + end + ", will_run: " + (file.getFilePointer() < end) + " ]";
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
-    private record Segment(long start, long end) {
+    public static class Measurement {
+        private double max;
+        private double min;
+        private double sum = 0;
+        private long measurements = 0;
+
+        public Measurement(String temperature) {
+            var temp = Double.parseDouble(temperature);
+            this.max = temp;
+            this.min = temp;
+            this.sum += temp;
+        }
+
+        public void add(String temperature) {
+            var temp = Double.parseDouble(temperature);
+            sum += temp;
+            measurements++;
+
+            if (temp > max) {
+                max = temp;
+            }
+            else if (temp < min) {
+                min = temp;
+            }
+        }
+
+        public double mean() {
+            return Math.round((measurements / sum) * 10d) / 10d;
+        }
+
+        @Override
+        public String toString() {
+            return min + "/" + mean() + "/" + max;
+        }
     }
 }
