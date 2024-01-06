@@ -65,7 +65,7 @@ public class CalculateAverage_eruizc {
         }
 
         public void start() throws IOException {
-            while (file.getFilePointer() < end) {
+            while (file.getFilePointer() <= end) {
                 var line = file.readLine();
                 var split = line.split(";"); // Improve with binary search
                 var station = map.get(split[0]);
